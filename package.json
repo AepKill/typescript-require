@@ -24,6 +24,7 @@
     "url": "git@github.com:theblacksmith/typescript-require.git"
   },
   "dependencies": {
+    "colors": "^1.1.2",
     "typescript": ">= 0.8.2"
   },
   "keywords": [

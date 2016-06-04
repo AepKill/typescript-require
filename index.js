@@ -1,8 +1,8 @@
 var vm = require('vm');
 var fs = require('fs');
 var path = require('path');
-
-var tsc = path.join(path.dirname(require.resolve("typescript")),"tsc.js");
+var colors = require('colors');
+var tsc = path.join(path.dirname(require.resolve("typescript")), "tsc.js");
 var tscScript = vm.createScript(fs.readFileSync(tsc, "utf8"), tsc);
 var libPath = path.join(path.dirname(require.resolve("typescript")), "lib.d.ts")
 
@@ -11,14 +11,15 @@ var options = {
   targetES5: true,
   moduleKind: 'commonjs',
   exitOnError: true,
-  tmpDir: 'tmp/tsreq'
+  tmpDir: 'tmp/tsreq',
+  expose: {}
 };
 
-module.exports = function(opts) {
+module.exports = function (opts) {
   options = merge(options, opts);
 };
 
-require.extensions['.ts'] = function(module) {
+require.extensions['.ts'] = function (module) {
   var jsname = compileTS(module);
   runJS(jsname, module);
 };
@@ -39,12 +40,12 @@ function isModified(tsname, jsname) {
  * Compiles TypeScript file, returns js file path
  * @return {string} js file path
  */
-function compileTS (module) {
+function compileTS(module) {
   var exitCode = 0;
   var tmpDir = path.join(process.cwd(), options.tmpDir);
   var relativeFolder = path.dirname(path.relative(process.cwd(), module.filename));
   var jsname = path.join(tmpDir, relativeFolder, path.basename(module.filename, ".ts") + ".js");
-  
+
   if (!isModified(module.filename, jsname)) {
     return jsname;
   }
@@ -54,7 +55,7 @@ function compileTS (module) {
     "tsc.js",
     "--nolib",
     "--target",
-    options.targetES5 ? "ES5" : "ES3", !! options.moduleKind ? "--module" : "", !! options.moduleKind ? options.moduleKind : "",
+    options.targetES5 ? "ES5" : "ES3", !!options.moduleKind ? "--module" : "", !!options.moduleKind ? options.moduleKind : "",
     "--outDir",
     path.join(tmpDir, relativeFolder),
     libPath,
@@ -64,9 +65,10 @@ function compileTS (module) {
 
   var proc = merge(merge({}, process), {
     argv: compact(argv),
-    exit: function(code) {
+    exit: function (code) {
+      console.log(options.exitOnError);
       if (code !== 0 && options.exitOnError) {
-        console.error('Fatal Error. Unable to compile TypeScript file. Exiting.');
+        console.error('Fatal Error. Unable to compile TypeScript file. Exiting.'.red);
         process.exit(code);
       }
       exitCode = code;
@@ -81,18 +83,23 @@ function compileTS (module) {
     setTimeout: setTimeout
   };
 
+
   tscScript.runInNewContext(sandbox);
+
   if (exitCode != 0) {
+    console.log('compile TypeScript done, but has some error'.yellow);
+  }
+  if (!fs.existsSync(jsname)) {
     throw new Error('Unable to compile TypeScript file.');
   }
 
   return jsname;
 }
 
-function runJS (jsname, module) {
+function runJS(jsname, module) {
   var content = fs.readFileSync(jsname, 'utf8');
 
-  var sandbox = {};
+  var sandbox = {}, expose = options.expose, exposeKeys = Object.getOwnPropertyNames(expose), key;
   for (var k in global) {
     sandbox[k] = global[k];
   }
@@ -103,6 +110,11 @@ function runJS (jsname, module) {
   sandbox.module = module;
   sandbox.global = sandbox;
   sandbox.root = root;
+
+  for (var i = 0, l = exposeKeys.length; i < l; i++) {
+    key = exposeKeys[i];
+    sandbox[key] = expose[key];
+  }
 
   return vm.runInNewContext(content, sandbox, { filename: jsname });
 }
@@ -118,7 +130,7 @@ function merge(a, b) {
 
 function compact(arr) {
   var narr = [];
-  arr.forEach(function(data) {
+  arr.forEach(function (data) {
     if (data) narr.push(data);
   });
   return narr;
